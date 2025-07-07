@@ -2,7 +2,7 @@
 
 from typing import Type, TypeVar
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -10,8 +10,9 @@ T = TypeVar("T", bound=BaseModel)
 class CommandArgs(BaseModel):
     """Base class for command argument validation."""
 
-    class Config:
-        extra = "forbid"  # Forbid extra fields for strict validation
+    model_config = ConfigDict(
+        extra="forbid"
+    )  # Forbid extra fields for strict validation
 
     @classmethod
     def parse_string(cls: Type[T], args_string: str) -> T:

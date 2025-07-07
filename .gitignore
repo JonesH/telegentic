@@ -5,3 +5,5 @@
 uv.lock
 __pycache__/
 .aider*
+.coverage
+coverage.xml

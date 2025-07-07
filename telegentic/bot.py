@@ -84,7 +84,9 @@ class HandlerMeta(ABCMeta):
                 tail = attr_name[len("handle") :]
                 if tail and tail[0].isupper():
                     # insert underscore before each capital, lowercase everything
-                    snake = re.sub(r"([A-Z])", lambda m: "_" + m.group(1).lower(), tail)
+                    snake = re.sub(
+                        r"([A-Z])", lambda m: "_" + str(m.group(1)).lower(), tail
+                    )
                     cmd = snake.lstrip("_")
 
             if cmd:
