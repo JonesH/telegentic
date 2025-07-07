@@ -2,107 +2,107 @@ name: Publish to PyPI
 
 on:
   release:
-    types: [published]
+    types: [published, created, released]
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      id-token: write  # For trusted publishing to PyPI
-    
+      id-token: write # For trusted publishing to PyPI
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.12"
-    
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
-    
-    - name: Set up the project
-      run: uv sync --all-extras
-    
-    - name: Verify version matches release tag
-      run: |
-        PACKAGE_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-        RELEASE_TAG=${GITHUB_REF#refs/tags/}
-        EXPECTED_VERSION=${RELEASE_TAG#v}
-        
-        echo "Package version: $PACKAGE_VERSION"
-        echo "Release tag: $RELEASE_TAG"
-        echo "Expected version: $EXPECTED_VERSION"
-        
-        if [ "$PACKAGE_VERSION" != "$EXPECTED_VERSION" ]; then
-          echo "❌ Version mismatch! Package version ($PACKAGE_VERSION) doesn't match release tag ($EXPECTED_VERSION)"
-          exit 1
-        fi
-        
-        echo "✅ Version verification passed"
-    
-    - name: Run final tests before publishing
-      run: |
-        echo "🧪 Running final test suite..."
-        uv run mypy telegentic tests
-        uv run pytest tests/ -v --cov=telegentic
-        echo "✅ All tests passed"
-    
-    - name: Build package
-      run: |
-        echo "📦 Building package..."
-        uv build
-        
-        # List built files
-        echo "Built files:"
-        ls -la dist/
-    
-    - name: Verify package contents
-      run: |
-        echo "🔍 Verifying package contents..."
-        
-        # Check that we have both wheel and source distribution
-        if [ ! -f dist/*.whl ]; then
-          echo "❌ No wheel file found"
-          exit 1
-        fi
-        
-        if [ ! -f dist/*.tar.gz ]; then
-          echo "❌ No source distribution found"
-          exit 1
-        fi
-        
-        echo "✅ Package verification passed"
-    
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        verbose: true
-        print-hash: true
-    
-    - name: Verify published package
-      run: |
-        echo "⏳ Waiting for package to be available on PyPI..."
-        sleep 30  # Give PyPI some time to process
-        
-        PACKAGE_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-        
-        # Try to install from PyPI to verify it's available
-        pip install telegentic==$PACKAGE_VERSION --dry-run --no-deps || {
-          echo "⚠️ Package not yet available on PyPI, but publish succeeded"
-          echo "It may take a few minutes for the package to be available"
-        }
-    
-    - name: Create success notification
-      run: |
-        PACKAGE_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-        
-        echo "🎉 Successfully published telegentic v$PACKAGE_VERSION to PyPI!"
-        echo ""
-        echo "📦 Install with: pip install telegentic==$PACKAGE_VERSION"
-        echo "📖 PyPI page: https://pypi.org/project/telegentic/$PACKAGE_VERSION/"
-        echo "🔗 Release: ${{ github.event.release.html_url }}"
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up the project
+        run: uv sync --all-extras
+
+      - name: Verify version matches release tag
+        run: |
+          PACKAGE_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          EXPECTED_VERSION=${RELEASE_TAG#v}
+
+          echo "Package version: $PACKAGE_VERSION"
+          echo "Release tag: $RELEASE_TAG"
+          echo "Expected version: $EXPECTED_VERSION"
+
+          if [ "$PACKAGE_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "❌ Version mismatch! Package version ($PACKAGE_VERSION) doesn't match release tag ($EXPECTED_VERSION)"
+            exit 1
+          fi
+
+          echo "✅ Version verification passed"
+
+      - name: Run final tests before publishing
+        run: |
+          echo "🧪 Running final test suite..."
+          uv run mypy telegentic tests
+          uv run pytest tests/ -v --cov=telegentic
+          echo "✅ All tests passed"
+
+      - name: Build package
+        run: |
+          echo "📦 Building package..."
+          uv build
+
+          # List built files
+          echo "Built files:"
+          ls -la dist/
+
+      - name: Verify package contents
+        run: |
+          echo "🔍 Verifying package contents..."
+
+          # Check that we have both wheel and source distribution
+          if [ ! -f dist/*.whl ]; then
+            echo "❌ No wheel file found"
+            exit 1
+          fi
+
+          if [ ! -f dist/*.tar.gz ]; then
+            echo "❌ No source distribution found"
+            exit 1
+          fi
+
+          echo "✅ Package verification passed"
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+          print-hash: true
+
+      - name: Verify published package
+        run: |
+          echo "⏳ Waiting for package to be available on PyPI..."
+          sleep 30  # Give PyPI some time to process
+
+          PACKAGE_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+
+          # Try to install from PyPI to verify it's available
+          pip install telegentic==$PACKAGE_VERSION --dry-run --no-deps || {
+            echo "⚠️ Package not yet available on PyPI, but publish succeeded"
+            echo "It may take a few minutes for the package to be available"
+          }
+
+      - name: Create success notification
+        run: |
+          PACKAGE_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+
+          echo "🎉 Successfully published telegentic v$PACKAGE_VERSION to PyPI!"
+          echo ""
+          echo "📦 Install with: pip install telegentic==$PACKAGE_VERSION"
+          echo "📖 PyPI page: https://pypi.org/project/telegentic/$PACKAGE_VERSION/"
+          echo "🔗 Release: ${{ github.event.release.html_url }}"
