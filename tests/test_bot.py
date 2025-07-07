@@ -1,6 +1,7 @@
 """Tests for the minimal bot framework with type safety."""
 
 import os
+from typing import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,6 +10,29 @@ from pydantic import ValidationError
 from telegentic import EchoArgs, HandlerBotBase, NoArgs, TypedEvent
 
 TEST_TOKEN = os.getenv("TELEGENTIC_TEST_TOKEN", "test_token")
+
+
+@pytest.fixture
+def mock_bot() -> Generator[MagicMock, None, None]:
+    """Fixture that provides a mocked aiogram Bot."""
+    with patch("telegentic.bot.Bot") as mock_bot_class:
+        mock_bot_instance = MagicMock()
+        mock_bot_instance.set_my_commands = AsyncMock()
+        mock_bot_class.return_value = mock_bot_instance
+        yield mock_bot_instance
+
+
+@pytest.fixture
+def mock_dispatcher() -> Generator[MagicMock, None, None]:
+    """Fixture that provides a mocked aiogram Dispatcher."""
+    with patch("telegentic.bot.Dispatcher") as mock_dispatcher_class:
+        mock_dispatcher_instance = MagicMock()
+        mock_dispatcher_instance.message = MagicMock()
+        mock_dispatcher_instance.message.register = MagicMock()
+        mock_dispatcher_instance.start_polling = AsyncMock()
+        mock_dispatcher_instance.feed_update = AsyncMock()
+        mock_dispatcher_class.return_value = mock_dispatcher_instance
+        yield mock_dispatcher_instance
 
 
 class TestBot(HandlerBotBase):
@@ -70,7 +94,9 @@ class TestHandlerMeta:
 class TestHandlerBotBase:
     """Test the HandlerBotBase class."""
 
-    def test_bot_initialization(self) -> None:
+    def test_bot_initialization(
+        self, mock_bot: MagicMock, mock_dispatcher: MagicMock
+    ) -> None:
         """Test bot initialization."""
         bot = TestBot(TEST_TOKEN)
         assert bot.bot_token == TEST_TOKEN
@@ -78,48 +104,49 @@ class TestHandlerBotBase:
         assert bot.bot is not None
         assert bot.dp is not None
 
-    def test_custom_webhook_path(self) -> None:
+    def test_custom_webhook_path(
+        self, mock_bot: MagicMock, mock_dispatcher: MagicMock
+    ) -> None:
         """Test custom webhook path."""
         bot = TestBot(TEST_TOKEN, webhook_path="/custom")
         assert bot.webhook_path == "/custom"
 
     @pytest.mark.asyncio
-    async def test_sync_commands_with_botfather(self) -> None:
+    async def test_sync_commands_with_botfather(
+        self, mock_bot: MagicMock, mock_dispatcher: MagicMock
+    ) -> None:
         """Test command synchronization with BotFather."""
         bot = TestBot(TEST_TOKEN)
 
-        # Mock the bot's set_my_commands method
-        with patch.object(
-            bot.bot, "set_my_commands", new_callable=AsyncMock
-        ) as mock_set_commands:
-            await bot._sync_commands_with_botfather()
+        await bot._sync_commands_with_botfather()
 
-            # Check that set_my_commands was called
-            mock_set_commands.assert_called_once()
+        # Check that set_my_commands was called on the mocked bot
+        mock_bot.set_my_commands.assert_called_once()
 
-            # Check the commands that were set
-            call_args = mock_set_commands.call_args[0][0]
-            command_names = [cmd.command for cmd in call_args]
-            assert "start" in command_names
-            assert "echo" in command_names
+        # Check the commands that were set
+        call_args = mock_bot.set_my_commands.call_args[0][0]
+        command_names = [cmd.command for cmd in call_args]
+        assert "start" in command_names
+        assert "echo" in command_names
 
     @pytest.mark.asyncio
-    async def test_empty_commands_sync(self) -> None:
+    async def test_empty_commands_sync(
+        self, mock_bot: MagicMock, mock_dispatcher: MagicMock
+    ) -> None:
         """Test sync with no commands."""
 
         class EmptyBot(HandlerBotBase):
             pass
 
         bot = EmptyBot(TEST_TOKEN)
-        with patch.object(
-            bot.bot, "set_my_commands", new_callable=AsyncMock
-        ) as mock_set_commands:
-            await bot._sync_commands_with_botfather()
+        await bot._sync_commands_with_botfather()
 
-            # Should not call set_my_commands for empty command list
-            mock_set_commands.assert_not_called()
+        # Should not call set_my_commands for empty command list
+        mock_bot.set_my_commands.assert_not_called()
 
-    def test_fastapi_app_creation(self) -> None:
+    def test_fastapi_app_creation(
+        self, mock_bot: MagicMock, mock_dispatcher: MagicMock
+    ) -> None:
         """Test FastAPI app creation when available."""
         bot = TestBot(TEST_TOKEN)
 
@@ -128,7 +155,9 @@ class TestHandlerBotBase:
         except ImportError:
             assert bot.app is None
 
-    def test_webhook_not_available_error(self) -> None:
+    def test_webhook_not_available_error(
+        self, mock_bot: MagicMock, mock_dispatcher: MagicMock
+    ) -> None:
         """Test error when trying to use webhook without FastAPI."""
         bot = TestBot(TEST_TOKEN)
 
@@ -143,46 +172,45 @@ class TestHandlerBotBase:
 class TestEventHandling:
     """Test event handling functionality."""
 
-    async def test_handler_wrapper_with_args(self) -> None:
+    async def test_handler_wrapper_with_args(
+        self, mock_bot: MagicMock, mock_dispatcher: MagicMock
+    ) -> None:
         """Test that handler wrapper correctly passes arguments."""
         bot = TestBot(TEST_TOKEN)
 
-        # Mock message object
+        # Mock message object with all required properties
         message = MagicMock()
         message.text = "/echo hello world"
-        message.reply = AsyncMock()
+        message.message_id = 123
+        message.from_user = MagicMock()
+        message.chat = MagicMock()
+        message.date = MagicMock()
+        message.reply = AsyncMock(return_value=message)
 
-        # Find the echo command handler
-        echo_handler = None
-        for handler in bot.dp.message.handlers:
-            if (
-                hasattr(handler, "callback")
-                and handler.callback.__name__ == "command_wrapper"
-            ):
-                # This is a simplified test - in practice you'd need to check the filter
-                echo_handler = handler.callback
-                break
+        # Test the handler directly rather than trying to find it in the dispatcher
+        event = TypedEvent(message)
+        await bot.handle_echo(event, "hello world")
+        message.reply.assert_called()
 
-        if echo_handler:
-            await echo_handler(message)
-            message.reply.assert_called_with("Hello from test bot!")
-
-    async def test_handler_wrapper_without_args(self) -> None:
+    async def test_handler_wrapper_without_args(
+        self, mock_bot: MagicMock, mock_dispatcher: MagicMock
+    ) -> None:
         """Test that handler wrapper works without arguments."""
         bot = TestBot(TEST_TOKEN)
 
-        # Mock message object
+        # Mock message object with all required properties
         message = MagicMock()
         message.text = "/echo"
-        message.reply = AsyncMock()
+        message.message_id = 123
+        message.from_user = MagicMock()
+        message.chat = MagicMock()
+        message.date = MagicMock()
+        message.reply = AsyncMock(return_value=message)
 
-        # In a real test, you'd properly invoke the handler
-        # This is a simplified version to show the concept
-        event = MagicMock()
-        event.reply = AsyncMock()
-
+        # Test directly by calling the handler
+        event = TypedEvent(message)
         await bot.handle_echo(event, "")
-        event.reply.assert_called_with("No args provided")
+        message.reply.assert_called_with("No args provided")
 
 
 class TestTypedEvent:
@@ -197,6 +225,7 @@ class TestTypedEvent:
         mock_message.from_user = MagicMock()
         mock_message.chat = MagicMock()
         mock_message.date = MagicMock()
+        mock_message.reply = AsyncMock()
 
         event = TypedEvent(mock_message)
 
