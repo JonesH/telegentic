@@ -2,7 +2,6 @@
 .venv/
 .pytest_cache/
 .env
-uv.lock
 __pycache__/
 .aider*
 .coverage
