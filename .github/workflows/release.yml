@@ -1,0 +1,151 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        default: 'patch'
+        options:
+          - patch
+          - minor
+          - major
+      release_notes:
+        description: 'Release notes (optional)'
+        required: false
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+    
+    - name: Set up the project
+      run: uv sync --all-extras
+    
+    - name: Run tests to ensure everything works
+      run: |
+        uv run mypy telegentic tests
+        uv run pytest tests/ -v --cov=telegentic
+    
+    - name: Get current version
+      id: current_version
+      run: |
+        CURRENT_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+        echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+    
+    - name: Calculate new version
+      id: new_version
+      run: |
+        # Simple version bumping logic
+        IFS='.' read -ra VERSION_PARTS <<< "${{ steps.current_version.outputs.version }}"
+        MAJOR=${VERSION_PARTS[0]}
+        MINOR=${VERSION_PARTS[1]}
+        PATCH=${VERSION_PARTS[2]}
+        
+        case "${{ github.event.inputs.version_bump }}" in
+          major)
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            ;;
+          minor)
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            ;;
+          patch)
+            PATCH=$((PATCH + 1))
+            ;;
+        esac
+        
+        NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+        echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "New version will be: $NEW_VERSION"
+    
+    - name: Update version in pyproject.toml
+      run: |
+        sed -i 's/version = "${{ steps.current_version.outputs.version }}"/version = "${{ steps.new_version.outputs.version }}"/' pyproject.toml
+        
+        # Verify the change
+        echo "Updated pyproject.toml:"
+        grep 'version = ' pyproject.toml
+    
+    - name: Generate changelog entry
+      id: changelog
+      run: |
+        # Get commits since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        
+        if [ -z "$LAST_TAG" ]; then
+          COMMIT_RANGE="HEAD"
+        else
+          COMMIT_RANGE="$LAST_TAG..HEAD"
+        fi
+        
+        echo "## What's Changed" > changelog.md
+        echo "" >> changelog.md
+        
+        # Get commit messages since last release
+        git log $COMMIT_RANGE --oneline --pretty=format:"- %s" | grep -v "^- Merge " >> changelog.md || echo "- Initial release" >> changelog.md
+        
+        echo "" >> changelog.md
+        echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$LAST_TAG...v${{ steps.new_version.outputs.version }}" >> changelog.md
+        
+        # If custom release notes provided, prepend them
+        if [ -n "${{ github.event.inputs.release_notes }}" ]; then
+          echo "${{ github.event.inputs.release_notes }}" > temp_notes.md
+          echo "" >> temp_notes.md
+          cat changelog.md >> temp_notes.md
+          mv temp_notes.md changelog.md
+        fi
+        
+        cat changelog.md
+    
+    - name: Commit version bump
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        git add pyproject.toml
+        git commit -m "chore: bump version to ${{ steps.new_version.outputs.version }}
+        
+        🤖 Generated with [Claude Code](https://claude.ai/code)
+        
+        Co-Authored-By: Claude <noreply@anthropic.com>"
+        
+        git push origin main
+    
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release create "v${{ steps.new_version.outputs.version }}" \
+          --title "Release v${{ steps.new_version.outputs.version }}" \
+          --notes-file changelog.md \
+          --target main
+    
+    - name: Output release info
+      run: |
+        echo "✅ Released version ${{ steps.new_version.outputs.version }}"
+        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.new_version.outputs.version }}"
