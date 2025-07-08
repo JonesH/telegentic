@@ -133,7 +133,7 @@ class TestHandlerBotBase:
     async def test_empty_commands_sync(
         self, mock_bot: MagicMock, mock_dispatcher: MagicMock
     ) -> None:
-        """Test sync with no commands."""
+        """Test sync with auto-generated help command."""
 
         class EmptyBot(HandlerBotBase):
             pass
@@ -141,8 +141,13 @@ class TestHandlerBotBase:
         bot = EmptyBot(TEST_TOKEN)
         await bot._sync_commands_with_botfather()
 
-        # Should not call set_my_commands for empty command list
-        mock_bot.set_my_commands.assert_not_called()
+        # Should call set_my_commands with auto-generated help command
+        mock_bot.set_my_commands.assert_called_once()
+
+        # Check that only help command was added
+        call_args = mock_bot.set_my_commands.call_args[0][0]
+        command_names = [cmd.command for cmd in call_args]
+        assert command_names == ["help"]
 
     def test_fastapi_app_creation(
         self, mock_bot: MagicMock, mock_dispatcher: MagicMock

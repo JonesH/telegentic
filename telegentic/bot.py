@@ -2,11 +2,9 @@
 
 import asyncio
 import logging
-import os
 import re
 from abc import ABCMeta
 from collections.abc import Awaitable, Callable
-from functools import wraps
 from typing import Any, ClassVar, Protocol
 
 from aiogram import Bot, Dispatcher
@@ -137,6 +135,7 @@ class HandlerBotBase(metaclass=HandlerMeta):
             # Create a proper bound method for the help handler
             async def help_handler(bot_instance, event: TypedEvent, args: str) -> None:
                 await bot_instance._auto_help_handler(event, args)
+
             self._commands["help"] = help_handler
 
         for command_name, handler in self._commands.items():
@@ -153,9 +152,9 @@ class HandlerBotBase(metaclass=HandlerMeta):
 
                     # Create typed event wrapper
                     event = TypedEvent(message)
-                    
+
                     # Check if handler should have typing indicator
-                    if not getattr(cmd_handler, '_no_typing', False):
+                    if not getattr(cmd_handler, "_no_typing", False):
                         await self._start_typing(message.chat.id)
                         try:
                             await cmd_handler(self, event, args)
@@ -251,7 +250,7 @@ class HandlerBotBase(metaclass=HandlerMeta):
     async def _auto_help_handler(self, event: TypedEvent, args: str) -> None:
         """Auto-generated help command that lists all available commands and their descriptions."""
         help_lines = ["Available commands:"]
-        
+
         for cmd_name, handler in sorted(self._commands.items()):
             # Get description from docstring or use default
             description = "Command"
@@ -261,9 +260,9 @@ class HandlerBotBase(metaclass=HandlerMeta):
                 description = doc_lines[0].strip(".")
                 if not description:
                     description = "Command"
-            
+
             help_lines.append(f"/{cmd_name} - {description}")
-        
+
         await event.reply("\n".join(help_lines))
 
     async def _start_typing(self, chat_id: int) -> None:
@@ -274,7 +273,11 @@ class HandlerBotBase(metaclass=HandlerMeta):
         async def typing_loop():
             try:
                 while True:
-                    await self.bot(send_chat_action.SendChatAction(chat_id=chat_id, action="typing"))
+                    await self.bot(
+                        send_chat_action.SendChatAction(
+                            chat_id=chat_id, action="typing"
+                        )
+                    )
                     await asyncio.sleep(4)  # Send typing action every 4 seconds
             except asyncio.CancelledError:
                 pass  # Task was cancelled, stop typing
@@ -286,4 +289,3 @@ class HandlerBotBase(metaclass=HandlerMeta):
         if chat_id in self._typing_tasks:
             self._typing_tasks[chat_id].cancel()
             del self._typing_tasks[chat_id]
-

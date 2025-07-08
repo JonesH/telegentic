@@ -17,7 +17,6 @@ class ExampleBot(HandlerBotBase):
         user_name = event.from_user.first_name if event.from_user else "Friend"
         await event.reply(f"🤖 Welcome {user_name}! I'm your friendly type-safe bot.")
 
-
     async def handle_echo(self, event: TypedEvent, args: str) -> None:
         """Echo the user's message with type-safe argument parsing."""
         try:
