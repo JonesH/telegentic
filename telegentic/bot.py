@@ -1,5 +1,7 @@
 """Minimal telegram bot with automatic command discovery."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import re
@@ -27,9 +29,9 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def no_typing(func):
+def no_typing(func: HandlerProtocol) -> HandlerProtocol:
     """Decorator to disable typing indicator for a handler."""
-    func._no_typing = True
+    func._no_typing = True  # type: ignore[attr-defined]
     return func
 
 
@@ -52,7 +54,9 @@ class TypedEvent:
 class HandlerProtocol(Protocol):
     """Protocol for bot handler methods."""
 
-    def __call__(self, bot: Any, event: TypedEvent, args: str) -> Awaitable[None]:
+    def __call__(
+        self, bot: HandlerBotBase, event: TypedEvent, args: str
+    ) -> Awaitable[None]:
         """Handler method signature."""
         ...
 
@@ -117,7 +121,7 @@ class HandlerBotBase(metaclass=HandlerMeta):
         self.webhook_path = webhook_path
         self.bot = Bot(token=bot_token)
         self.dp = Dispatcher()
-        self._typing_tasks: dict[int, asyncio.Task] = {}
+        self._typing_tasks: dict[int, asyncio.Task[None]] = {}
         self._admin_manager = AdminChannelManager(self.bot)
         self._setup_handlers()
 
@@ -130,15 +134,14 @@ class HandlerBotBase(metaclass=HandlerMeta):
 
     def _setup_handlers(self) -> None:
         """Set up aiogram handlers for discovered commands."""
+        # Create working copy of commands
+        commands_to_register = dict(self._commands)
+
         # Add auto-generated help command if not already defined
-        if "help" not in self._commands:
-            # Create a proper bound method for the help handler
-            async def help_handler(bot_instance, event: TypedEvent, args: str) -> None:
-                await bot_instance._auto_help_handler(event, args)
+        if "help" not in commands_to_register:
+            commands_to_register["help"] = self._auto_help_handler  # type: ignore[assignment]
 
-            self._commands["help"] = help_handler
-
-        for command_name, handler in self._commands.items():
+        for command_name, handler in commands_to_register.items():
             # Create a wrapper that adapts the handler signature
             def create_command_handler(
                 cmd_handler: HandlerProtocol,  # [[Any, TypedEvent, str], Awaitable[None]],
@@ -189,7 +192,13 @@ class HandlerBotBase(metaclass=HandlerMeta):
 
         # Generate command descriptions from method docstrings
         bot_commands: list[BotCommand] = []
-        for cmd_name, method in self._commands.items():
+        commands_to_sync = dict(self._commands)
+
+        # Add help command for sync if not present
+        if "help" not in commands_to_sync:
+            commands_to_sync["help"] = self._auto_help_handler  # type: ignore[assignment]
+
+        for cmd_name, method in commands_to_sync.items():
             # Get description from docstring or use default
             description = "Command"
             if hasattr(method, "__doc__") and method.__doc__:
@@ -270,7 +279,7 @@ class HandlerBotBase(metaclass=HandlerMeta):
         if chat_id in self._typing_tasks:
             return  # Already typing
 
-        async def typing_loop():
+        async def typing_loop() -> None:
             try:
                 while True:
                     await self.bot(

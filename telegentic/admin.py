@@ -1,9 +1,11 @@
 """Admin channel management functionality for telegentic bots."""
 
+from __future__ import annotations
+
 import logging
 import os
 
-import telegramify_markdown
+import telegramify_markdown  # type: ignore[import-untyped]
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramNotFound
 
@@ -48,7 +50,7 @@ class AdminChannelManager:
             return
 
         try:
-            admin_channel_id = int(admin_channel_id)
+            admin_channel_id_int = int(admin_channel_id)
         except ValueError:
             logger.error(f"Invalid ADMIN_CHANNEL_ID format: {admin_channel_id}")
             await self._send_channel_setup_instructions(first_admin_id, admin_ids)
@@ -56,17 +58,18 @@ class AdminChannelManager:
 
         # Check if bot has access to the admin channel
         try:
-            chat = await self.bot.get_chat(admin_channel_id)
-            logger.info(f"✅ Admin channel found: {chat.title}")
+            chat = await self.bot.get_chat(admin_channel_id_int)
+            chat_title = chat.title or "Unknown Channel"
+            logger.info(f"✅ Admin channel found: {chat_title}")
 
             # Check if bot is admin in the channel
             try:
                 bot_member = await self.bot.get_chat_member(
-                    admin_channel_id, self.bot.id
+                    admin_channel_id_int, self.bot.id
                 )
                 if bot_member.status not in ["administrator", "creator"]:
                     logger.warning(
-                        f"⚠️ Bot is not an administrator in admin channel '{chat.title}'"
+                        f"⚠️ Bot is not an administrator in admin channel '{chat_title}'"
                     )
                     logger.warning(
                         "   Please make the bot an administrator with permissions to:"
@@ -77,14 +80,16 @@ class AdminChannelManager:
                     logger.info("✅ Bot has admin permissions in admin channel")
             except (TelegramForbiddenError, TelegramNotFound):
                 logger.warning(
-                    f"⚠️ Cannot check bot permissions in admin channel '{chat.title}'"
+                    f"⚠️ Cannot check bot permissions in admin channel '{chat_title}'"
                 )
                 logger.warning(
                     "   Please ensure bot is an administrator with appropriate permissions"
                 )
 
             # Check admin membership
-            await self._check_admin_membership(admin_channel_id, admin_ids, chat.title)
+            await self._check_admin_membership(
+                admin_channel_id_int, admin_ids, chat_title
+            )
 
         except TelegramNotFound:
             logger.error(f"❌ Admin channel not found (ID: {admin_channel_id})")

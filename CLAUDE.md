@@ -90,3 +90,4 @@ Follow these Python development practices for this project:
 - do not add @coauthor to git commit messages
 - no Optional, do | None instead
 - Before finishing your work you must run `uv run python example_bot.py` but if it succeeds you must be prepared to cancel. Goal is that you spot those errors and iterate on fixing them yourself.
+- Always `from __future__ import annotations` instead of using `""` in type hints
