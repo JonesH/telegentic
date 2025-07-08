@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from telegentic import EchoArgs, HandlerBotBase, TypedEvent
+from telegentic import EchoArgs, HandlerBotBase, TypedEvent, no_typing
 
 
 class ExampleBot(HandlerBotBase):
@@ -17,17 +17,6 @@ class ExampleBot(HandlerBotBase):
         user_name = event.from_user.first_name if event.from_user else "Friend"
         await event.reply(f"🤖 Welcome {user_name}! I'm your friendly type-safe bot.")
 
-    async def handle_help(self, event: TypedEvent, args: str) -> None:
-        """Show available commands."""
-        help_text = """
-Available commands:
-/start - Welcome message
-/help - Show this help
-/echo <text> [repeat_count] - Echo your message with optional repeat
-/ping - Check if bot is alive
-/info - Show chat information
-        """
-        await event.reply(help_text.strip())
 
     async def handle_echo(self, event: TypedEvent, args: str) -> None:
         """Echo the user's message with type-safe argument parsing."""
@@ -40,6 +29,7 @@ Available commands:
         except ValueError as e:
             await event.reply(f"❌ {e}")
 
+    @no_typing
     async def handle_ping(self, event: TypedEvent, args: str) -> None:
         """Simple ping command."""
         await event.reply("🏓 Pong!")
@@ -64,6 +54,13 @@ async def main() -> None:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
+
+    # Optional: Configure admin IDs for admin channel management
+    admin_ids = os.getenv("ADMIN_TELEGRAM_ID")
+    if admin_ids:
+        print(f"Admin IDs configured: {admin_ids}")
+    else:
+        print("No admin IDs configured - admin channel management disabled")
 
     bot = ExampleBot(token)
 

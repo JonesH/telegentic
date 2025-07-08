@@ -9,6 +9,9 @@ Minimal and elegant Telegram bot framework for Python that automatically discove
 - **aiogram integration** - Built on top of the modern aiogram Bot API framework
 - **Optional webhook support** - FastAPI integration available as optional dependency
 - **Auto-sync with BotFather** - Commands are automatically synced with Telegram's BotFather
+- **Auto-generated help** - Help command automatically generated from method docstrings
+- **Typing indicators** - Automatic typing indicators while generating responses
+- **Admin channel management** - Automatic setup verification for admin channels
 - **Simple and focused** - Minimal boilerplate, maximum developer experience
 
 ## Installation
@@ -24,9 +27,9 @@ uv add telegentic[fastapi]
 ## Quick Start
 
 ```python
-from telegentic import SimpleBot
+from telegentic import HandlerBotBase
 
-class MyBot(SimpleBot):
+class MyBot(HandlerBotBase):
     async def handle_start(self, event, args: str) -> None:
         """Welcome message for new users."""
         await event.reply("Hello! I'm your bot.")
@@ -50,10 +53,27 @@ Handler methods automatically become slash commands:
 
 The framework uses a metaclass to automatically discover methods with `handle_` prefix and register them as bot commands with aiogram.
 
+## Admin Channel Management
+
+On startup, the bot automatically:
+- Verifies admin channel configuration
+- Checks bot permissions in the admin channel
+- Validates admin membership
+- Provides setup instructions for missing configuration
+- Creates invite links for missing admins (if permitted)
+
+The bot will print clear instructions for any missing permissions or configuration.
+
 ## Environment Variables
 
 Required for bot operation:
 - `TELEGRAM_BOT_TOKEN` - Your bot token from @BotFather
+
+Optional admin configuration:
+- `ADMIN_TELEGRAM_ID` - Comma-separated list of admin user IDs
+- `ADMIN_CHANNEL_ID` - ID of private admin channel (bot must be admin)
+
+See `.env.example` for a complete configuration template.
 
 ## Example
 
@@ -76,6 +96,7 @@ uv run pytest
 
 - **aiogram** v3.20.0 - Modern Bot API framework
 - **python-dotenv** v1.0.0 - Environment variable management
+- **telegramify-markdown** v0.5.1 - Safe MarkdownV2 formatting for Telegram
 - **fastapi** v0.115.0 - Optional webhook support
 - **uvicorn** v0.30.0 - Optional ASGI server
 

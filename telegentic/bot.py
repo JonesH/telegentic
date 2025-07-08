@@ -1,15 +1,21 @@
 """Minimal telegram bot with automatic command discovery."""
 
+import asyncio
 import logging
+import os
 import re
 from abc import ABCMeta
 from collections.abc import Awaitable, Callable
+from functools import wraps
 from typing import Any, ClassVar, Protocol
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
+from aiogram.methods import send_chat_action
 from aiogram.types import BotCommand, Message, Update
 from dotenv import load_dotenv
+
+from .admin import AdminChannelManager
 
 load_dotenv()
 try:
@@ -21,6 +27,12 @@ except ImportError:
     _FASTAPI_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+
+def no_typing(func):
+    """Decorator to disable typing indicator for a handler."""
+    func._no_typing = True
+    return func
 
 
 class TypedEvent:
@@ -107,6 +119,8 @@ class HandlerBotBase(metaclass=HandlerMeta):
         self.webhook_path = webhook_path
         self.bot = Bot(token=bot_token)
         self.dp = Dispatcher()
+        self._typing_tasks: dict[int, asyncio.Task] = {}
+        self._admin_manager = AdminChannelManager(self.bot)
         self._setup_handlers()
 
         # Only setup webhook if FastAPI is available
@@ -118,6 +132,13 @@ class HandlerBotBase(metaclass=HandlerMeta):
 
     def _setup_handlers(self) -> None:
         """Set up aiogram handlers for discovered commands."""
+        # Add auto-generated help command if not already defined
+        if "help" not in self._commands:
+            # Create a proper bound method for the help handler
+            async def help_handler(bot_instance, event: TypedEvent, args: str) -> None:
+                await bot_instance._auto_help_handler(event, args)
+            self._commands["help"] = help_handler
+
         for command_name, handler in self._commands.items():
             # Create a wrapper that adapts the handler signature
             def create_command_handler(
@@ -132,7 +153,16 @@ class HandlerBotBase(metaclass=HandlerMeta):
 
                     # Create typed event wrapper
                     event = TypedEvent(message)
-                    await cmd_handler(self, event, args)
+                    
+                    # Check if handler should have typing indicator
+                    if not getattr(cmd_handler, '_no_typing', False):
+                        await self._start_typing(message.chat.id)
+                        try:
+                            await cmd_handler(self, event, args)
+                        finally:
+                            await self._stop_typing(message.chat.id)
+                    else:
+                        await cmd_handler(self, event, args)
 
                 return command_wrapper
 
@@ -182,6 +212,7 @@ class HandlerBotBase(metaclass=HandlerMeta):
     async def start(self) -> None:
         """Start the bot and sync commands."""
         await self._sync_commands_with_botfather()
+        await self._admin_manager.check_admin_channel_setup()
         logger.info("Bot started successfully")
 
     def run_webhook(self, host: str = "0.0.0.0", port: int = 8000) -> None:
@@ -205,4 +236,54 @@ class HandlerBotBase(metaclass=HandlerMeta):
     async def run_polling(self) -> None:
         """Run the bot with polling."""
         await self.start()
-        await self.dp.start_polling(self.bot)
+        try:
+            await self.dp.start_polling(self.bot)
+        except KeyboardInterrupt:
+            await self._shutdown()
+        finally:
+            await self._shutdown()
+
+    async def _shutdown(self) -> None:
+        """Handle bot shutdown."""
+        logger.info("🛑 Bot shutting down...")
+        logger.info("✅ Shutdown complete")
+
+    async def _auto_help_handler(self, event: TypedEvent, args: str) -> None:
+        """Auto-generated help command that lists all available commands and their descriptions."""
+        help_lines = ["Available commands:"]
+        
+        for cmd_name, handler in sorted(self._commands.items()):
+            # Get description from docstring or use default
+            description = "Command"
+            if hasattr(handler, "__doc__") and handler.__doc__:
+                # Extract first line of docstring
+                doc_lines = handler.__doc__.strip().split("\n")
+                description = doc_lines[0].strip(".")
+                if not description:
+                    description = "Command"
+            
+            help_lines.append(f"/{cmd_name} - {description}")
+        
+        await event.reply("\n".join(help_lines))
+
+    async def _start_typing(self, chat_id: int) -> None:
+        """Start continuous typing indicator for a chat."""
+        if chat_id in self._typing_tasks:
+            return  # Already typing
+
+        async def typing_loop():
+            try:
+                while True:
+                    await self.bot(send_chat_action.SendChatAction(chat_id=chat_id, action="typing"))
+                    await asyncio.sleep(4)  # Send typing action every 4 seconds
+            except asyncio.CancelledError:
+                pass  # Task was cancelled, stop typing
+
+        self._typing_tasks[chat_id] = asyncio.create_task(typing_loop())
+
+    async def _stop_typing(self, chat_id: int) -> None:
+        """Stop typing indicator for a chat."""
+        if chat_id in self._typing_tasks:
+            self._typing_tasks[chat_id].cancel()
+            del self._typing_tasks[chat_id]
+
