@@ -186,10 +186,6 @@ class HandlerBotBase(metaclass=HandlerMeta):
 
     async def _sync_commands_with_botfather(self) -> None:
         """Sync discovered commands with BotFather using Bot API."""
-        if not self._commands:
-            logger.info("No commands to sync")
-            return
-
         # Generate command descriptions from method docstrings
         bot_commands: list[BotCommand] = []
         commands_to_sync = dict(self._commands)
@@ -197,6 +193,11 @@ class HandlerBotBase(metaclass=HandlerMeta):
         # Add help command for sync if not present
         if "help" not in commands_to_sync:
             commands_to_sync["help"] = self._auto_help_handler  # type: ignore[assignment]
+
+        # Check if we have any commands to sync after adding help
+        if not commands_to_sync:
+            logger.info("No commands to sync")
+            return
 
         for cmd_name, method in commands_to_sync.items():
             # Get description from docstring or use default
